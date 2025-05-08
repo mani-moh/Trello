@@ -1,8 +1,8 @@
 import sys
 from PySide6.QtWidgets import QApplication
-from button_holder import ButtonHolder
+from mainwindow import MainWindow
 app = QApplication(sys.argv)
 
-window = ButtonHolder()
+window = MainWindow()
 window.show()
 app.exec()
