@@ -8,3 +8,4 @@ class ButtonHolder(QMainWindow):
 
         #Set up the button as our central widget
         self.setCentralWidget(button)
+
