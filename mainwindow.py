@@ -6,8 +6,16 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setMinimumSize(QSize(400,300))
         self.setWindowTitle("my App")
-        button = QPushButton("Press Me!")
+
+        self.button = QPushButton("switch on")
+        self.button.setMaximumSize(QSize(self.width()//4, self.height()//10))
+        self.button.setCheckable(True)
+        self.button.clicked.connect(self.button_clicked)
 
         #Set up the button as our central widget
-        self.setCentralWidget(button)
+        self.setCentralWidget(self.button)
+
+    def button_clicked(self, state):
+        self.button.setText("switch off" if state else "switch on")
+        print(f"button is {"on" if state else "off"}")
 
