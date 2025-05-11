@@ -14,6 +14,7 @@ class MainWindow(QMainWindow):
         #
         # #Set up the button as our central widget
         # self.setCentralWidget(self.button)
+
         self.label = QLabel(self)
         self.input_text = QLineEdit(self)
         self.input_text.textChanged.connect(lambda x :self.label.setText(x.upper()))
