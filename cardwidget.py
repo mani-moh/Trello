@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QPushButton, QLabel, QHBoxLayout, QSizePolicy, QWi
 
 class CardWidget(QFrame):
     cards_style = "background-color: rgb(50, 50, 50); margin: 5px; padding: 10px; border-radius: 5px; border: 1px solid white"
-    delete_signal = Signal(QWidget)
+
     def __init__(self, title, desc):
         super().__init__()
         self.title = title
@@ -50,6 +50,9 @@ class CardWidget(QFrame):
 
         self.delete_button = QPushButton("X", self)
         self.delete_button.setFixedSize(25, 25)
-        self.delete_button.clicked.connect(lambda: self.delete_signal.emit(self))
+        self.delete_button.clicked.connect(self.delete_card)
         self.layout.addWidget(self.delete_button)
+
+    def delete_card(self):
+        self.deleteLater()
 

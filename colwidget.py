@@ -32,12 +32,10 @@ class ColWidget(QScrollArea):
             data = json.load(f)
         for task in data:
             card = CardWidget(task['name'], "")
-            card.delete_signal.connect(self.delete_card)
             self.layout.addWidget(card)
 
 
         self.layout.addStretch()
 
-    def delete_card(self, card: CardWidget):
-        card.deleteLater()
+
 
