@@ -25,17 +25,13 @@ class ColWidget(QScrollArea):
         self.layout = QVBoxLayout(self.widget)
 
         self.label = QLabel(self)
-        self.label.setText("Unassigned tasks")
+        self.label.setText(self.title)
         self.layout.addWidget(self.label)
 
-        with open(self.path, 'r') as f:
-            data = json.load(f)
-        for task in data:
-            card = CardWidget(task['name'], "")
-            self.layout.addWidget(card)
 
 
-        self.layout.addStretch()
+
+
 
 
 

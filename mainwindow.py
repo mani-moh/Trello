@@ -3,9 +3,16 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QScrollArea, \
     QHBoxLayout, QStackedWidget, QLineEdit
+
+from addcardwindow import AddCardWindow
 from cardwidget import CardWidget
+from cardwindow import CardWindow
 from colwidget import ColWidget
 import sqlite_funcs
+from projectwidget import ProjectWidget
+from usersettingswindow import UserSettingsWindow
+from createprojectwindow import CreateProjectWindow
+from addcolwindow import AddColWindow
 
 
 class MainWindow(QMainWindow):
@@ -24,22 +31,44 @@ class MainWindow(QMainWindow):
         self.scroll_cols = []
         self.num = 1
         self.username = -1
+        self.project_id = 0
+        self.user_data = {
+            "first name": "",
+            "last name": "",
+            "email": "",
+            "type": "",
+            "is admin": False,
+            "phone number": "",
+            "date created": None
+        }
+
+        self.projects = {}
 
 
         #central widget
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
 
-        pages = {
+        self.pages = {
             "login": 0,
             "projects": 1,
             "trello" : 2
         }
 
         self.create_login_page()
-        #self.create_projects_page()
+        self.create_projects_page()
         self.create_trello_page()
         self.stacked_widget.setCurrentIndex(0)
+        try:
+            with open("username.txt", "r") as f:
+                content = f.read()
+                if content.strip() != "":
+                    self.username = content.strip()
+                    self.update_projects_page()
+                    self.update_projects()
+                    self.stacked_widget.setCurrentIndex(self.pages["projects"])
+        except FileNotFoundError:
+            pass
 
     def create_trello_page(self):
 
@@ -63,6 +92,10 @@ class MainWindow(QMainWindow):
         self.button_add_card.clicked.connect(self.slot_button_add_card)
         self.layout_main.addWidget(self.button_add_card)
 
+        self.button_close_project = QPushButton("Close Project")
+        self.button_close_project.clicked.connect(self.close_project)
+        self.layout_main.addWidget(self.button_close_project)
+
         #widget trello
         self.widget_trello = QWidget()
         self.layout_main.addWidget(self.widget_trello)
@@ -83,27 +116,62 @@ class MainWindow(QMainWindow):
         self.layout_board = QHBoxLayout(self.widget_board)
 
 
+    def close_project(self):
+        self.stacked_widget.setCurrentIndex(self.pages["projects"])
+
+
+    def update_trello(self):
+        # Clear existing widgets
+        while self.layout_board.count():
+            item = self.layout_board.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        self.scroll_cols.clear()  # Clear the list of column widgets
+
+        info = sqlite_funcs.get_task_basic_info_by_project_id(self.project_id, "id")
+        self.subboard_name = info["subboard_name"]
+        task_info = info["task_ids"]
+
+        for subboard_id in self.subboard_name:
+            col_widget = ColWidget(title=self.subboard_name[subboard_id])
+            self.layout_board.addWidget(col_widget)
+            self.scroll_cols.append(col_widget)
+
+            button_add_card = QPushButton("Add Card")
+            button_add_card.clicked.connect(self.slot_button_add_card)
+            col_widget.layout.addWidget(button_add_card)
+
+            for card in task_info[subboard_id]:
+                card_widget = CardWidget(name=card["name"], id=card["id"])
+                card_widget.delete_signal.connect(self.delete_card)
+                card_widget.open_signal.connect(self.open_card)
+                col_widget.layout.addWidget(card_widget)
+
+            col_widget.layout.addStretch()
+
+    def delete_card(self, card_id):
+        sqlite_funcs.delete_card(card_id)
+        self.update_trello()
+    def open_card(self, card_id):
+        self.card_window = CardWindow(self, card_id)
+        self.card_window.exec()
+
+
+
+
+
+
+
 #slots trello-------------------
     def slot_button_add_column(self):
-        scroll_area_col = ColWidget()
-        self.layout_board.addWidget(scroll_area_col)
-
-
-
-        #add to list
-
-        self.scroll_cols.append(scroll_area_col)
+        self.add_col_window = AddColWindow(self)
+        self.add_col_window.exec()
 
     def slot_button_add_card(self):
-        for scroll_col in self.scroll_cols:
-            self.remove_extra(scroll_col)
-
-            card = CardWidget(f"name {self.num}", "")
-
-
-            scroll_col.layout.addWidget(card)
-            scroll_col.layout.addStretch()
-            self.num += 1
+        self.add_card_window = AddCardWindow(self)
+        self.add_card_window.exec()
 
     def remove_extra(self, scroll_col: ColWidget):
         layout = scroll_col.layout
@@ -180,7 +248,17 @@ class MainWindow(QMainWindow):
         signup_button.clicked.connect(self.signup_attempt)
         self.layout_main_login.addWidget(signup_button)
 
+        #debug stuff---------------------
+        debug_label = QLabel(self)
+        debug_label.setText("Debug stuff:")
+        self.layout_main_login.addWidget(debug_label)
 
+        test_get_button = QPushButton("Test get")
+        test_get_button.setMaximumWidth(100)
+        test_get_button.clicked.connect(sqlite_funcs.test_get)
+        self.layout_main_login.addWidget(test_get_button)
+
+        #push everything before this to the top and everything below to the bottem
         self.layout_main_login.addStretch()
 
         self.error = QLabel(self)
@@ -198,8 +276,12 @@ class MainWindow(QMainWindow):
             self.error.setText("incorrect username or password")
             return
         if sqlite_funcs.login_check(int(username), password):
-            self.username = self.input_username
+            self.username = self.input_username.text()
+            self.update_projects_page()
+            self.update_projects()
             self.stacked_widget.setCurrentIndex(1)
+            with open("username.txt", "w") as f:
+                f.write(self.username)
         else:
             self.error.setText("incorrect username or password")
 
@@ -212,14 +294,162 @@ class MainWindow(QMainWindow):
         if firstname == '' or lastname == '' or password == '' or email == '':
             self.error.setText("all fields are required")
             return
-        if sqlite_funcs.signup_check(firstname, lastname, password, email):
+        if sqlite_funcs.signup_check(email):
             username = sqlite_funcs.signup_register(firstname, lastname, password, email)
             self.messege.setText(f"Your 4 digit username is {username}.\nYou can login with your username")
 
         else:
             self.error.setText("this email address is already used")
 
-    def create_prpjects_page(self):
+    def create_projects_page(self):
         self.central_widget_projects = QWidget()
         self.stacked_widget.addWidget(self.central_widget_projects)
         self.layout_main_projects = QVBoxLayout(self.central_widget_projects)
+
+        self.widget_welcome = QWidget()
+        self.layout_main_projects.addWidget(self.widget_welcome)
+
+        self.layout_welcome = QHBoxLayout(self.widget_welcome)
+
+        self.label_welcome = QLabel(self.widget_welcome)
+        self.label_welcome.setText(f"Welcome {self.user_data['first name']} {self.user_data['last name']}!")
+        self.layout_welcome.addWidget(self.label_welcome)
+
+        self.button_create_project = QPushButton("Create New Project")
+        self.button_create_project.setMaximumWidth(200)
+        self.button_create_project.clicked.connect(self.create_new_project)
+        self.layout_welcome.addWidget(self.button_create_project)
+
+        self.button_user_settings = QPushButton("User Settings")
+        self.button_user_settings.setMaximumWidth(200)
+        self.button_user_settings.clicked.connect(self.open_user_settings_window)
+        self.layout_welcome.addWidget(self.button_user_settings)
+
+        self.button_signout_projects = QPushButton("Sign Out")
+        self.button_signout_projects.setMaximumWidth(200)
+        self.button_signout_projects.clicked.connect(self.open_login_window)
+        self.layout_welcome.addWidget(self.button_signout_projects)
+
+        self.widget_projects = QWidget()
+        self.layout_main_projects.addWidget(self.widget_projects)
+
+        self.layout_projects = QHBoxLayout(self.widget_projects)
+
+
+        #admin projects---------------------------
+        self.scroll_area_admin_projects = QScrollArea()
+        self.scroll_area_admin_projects.setWidgetResizable(True)
+        self.scroll_area_admin_projects.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.layout_projects.addWidget(self.scroll_area_admin_projects)
+
+        self.widget_admin_projects = QWidget()
+        self.scroll_area_admin_projects.setWidget(self.widget_admin_projects)
+
+        self.layout_admin_projects = QVBoxLayout(self.widget_admin_projects)
+
+        # leader projects---------------------------
+        self.scroll_area_leader_projects = QScrollArea()
+        self.scroll_area_leader_projects.setWidgetResizable(True)
+        self.scroll_area_leader_projects.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.layout_projects.addWidget(self.scroll_area_leader_projects)
+
+        self.widget_leader_projects = QWidget()
+        self.scroll_area_leader_projects.setWidget(self.widget_leader_projects)
+
+        self.layout_leader_projects = QVBoxLayout(self.widget_leader_projects)
+
+        # member projects---------------------------
+        self.scroll_area_member_projects = QScrollArea()
+        self.scroll_area_member_projects.setWidgetResizable(True)
+        self.scroll_area_member_projects.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.layout_projects.addWidget(self.scroll_area_member_projects)
+
+        self.widget_member_projects = QWidget()
+        self.scroll_area_member_projects.setWidget(self.widget_member_projects)
+
+        self.layout_member_projects = QVBoxLayout(self.widget_member_projects)
+
+
+
+
+
+
+
+    def update_projects_page(self):
+        self.user_data = sqlite_funcs.get_user_data(self.username)
+        self.label_welcome.setText(f"Welcome {self.user_data['first name']} {self.user_data['last name']}!")
+
+    def update_projects(self):
+        self.projects = sqlite_funcs.get_projects_by_username(self.username)
+        layout = QVBoxLayout
+        for key in self.projects:
+            match key:
+                case "admin":
+                    layout = self.layout_admin_projects
+                case "leader":
+                    layout = self.layout_leader_projects
+                case "member":
+                    layout = self.layout_member_projects
+
+            while layout.count():
+                item = layout.takeAt(0)  # Remove the item from the layout
+                widget = item.widget()
+                if widget is not None and isinstance(widget, ProjectWidget):  # Detach widget from layout and window
+                    widget.deleteLater()  # Schedule widget for deletion
+
+        label_admin = QLabel(self)
+        label_admin.setText(f"Admin projects")
+        self.layout_admin_projects.addWidget(label_admin)
+
+        label_leader = QLabel(self)
+        label_leader.setText(f"Leader projects")
+        self.layout_leader_projects.addWidget(label_leader)
+
+        label_member = QLabel(self)
+        label_member.setText(f"Member projects")
+        self.layout_member_projects.addWidget(label_member)
+
+        for key in self.projects:
+            for project in self.projects[key]:
+                project_data = sqlite_funcs.get_project_data_with_id(project)
+                project_widget = ProjectWidget(project, project_data["name"], sqlite_funcs.get_username_with_userid(project_data["leader"]), project_data["first name"], project_data["last name"], project_data["date created"].__str__())
+                project_widget.delete_signal.connect(self.delete_project)
+                project_widget.open_signal.connect(self.open_project)
+
+                match key:
+                    case "admin":
+                        self.layout_admin_projects.addWidget(project_widget)
+                    case "leader":
+                        self.layout_leader_projects.addWidget(project_widget)
+                    case "member":
+                        self.layout_member_projects.addWidget(project_widget)
+        self.layout_admin_projects.addStretch()
+        self.layout_leader_projects.addStretch()
+        self.layout_member_projects.addStretch()
+
+    def delete_project(self, project_id):
+        sqlite_funcs.delete_project(project_id)
+        self.update_projects()
+
+    def open_project(self, project_id):
+        self.project_id = project_id
+        self.update_trello()
+        self.stacked_widget.setCurrentIndex(self.pages["trello"])
+
+
+
+
+    def open_user_settings_window(self):
+        self.user_settings_window = UserSettingsWindow(self)
+        self.user_settings_window.show()
+
+    def open_login_window(self):
+        self.stacked_widget.setCurrentIndex(self.pages["login"])
+        with open("username.txt", "w") as f:
+            pass
+
+    def create_new_project(self):
+        self.create_project_window = CreateProjectWindow(self)
+        self.create_project_window.exec()
+        self.update_projects()
+
